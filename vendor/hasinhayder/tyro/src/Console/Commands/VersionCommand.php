@@ -1,0 +1,49 @@
+<?php
+
+namespace HasinHayder\Tyro\Console\Commands;
+
+class VersionCommand extends BaseTyroCommand {
+    protected $signature = 'tyro:sys-version';
+
+    protected $aliases = ['tyro:version'];
+
+    protected $description = 'Show the currently installed Tyro version';
+
+    public function handle(): int {
+        $version = '1.13.0'; // added tyro:role-clone and tyro:role-sync commands
+
+        $this->info('');
+        $this->info('  ╔════════════════════════════════════════╗');
+        $this->info('  ║                                        ║');
+        $this->info('  ║        Tyro                            ║');
+        $this->info('  ║                                        ║');
+        $this->info('  ╚════════════════════════════════════════╝');
+        $this->info('');
+        $this->info("  Version: <comment>{$version}</comment>");
+        $this->info('  Laravel: <comment>'.app()->version().'</comment>');
+        $this->info('  PHP: <comment>'.PHP_VERSION.'</comment>');
+        $this->info('');
+        $this->info('  Documentation: <comment>https://hasinhayder.github.io/tyro/doc.html</comment>');
+        $this->info('  GitHub: <comment>https://github.com/hasinhayder/tyro</comment>');
+        $this->info('');
+
+        return self::SUCCESS;
+    }
+}
+// 1.13.0 - Added tyro:role-clone and tyro:role-sync commands
+// 1.12.0 - Added user-show command and one-line command description banners
+// 1.11.0 - Registered privilege-delete and role-users commands, added attached-role warning to privilege delete
+// 1.10.1 - removed is() and isNot() from HasTyroRoles trait for compatibility issue
+// 1.10.0 - Added is(), isNot(), syncRoles(), hasNoRoles(), and rolesCount() helpers to HasTyroRoles trait
+// 1.9.0 - Added findRole() and findPrivilege() static methods to Role and Privilege models
+// 1.8.0 - Added attachRole/detachRole to HasTyroRoles and Privilege model, added role check helpers (isAdmin, isSuperAdmin, isEditor, isCustomer)
+// 1.7.0 - Added AI skill system, registered 4 missing commands, fixed SetupAiSkillCommand paths
+// 1.6.0 - Added tyro:update-config command
+// 1.5.0 - Added Laravel 13 support.
+// 1.4.0 - added hasAnyRole() Support. Now Users can check if they have any of the given roles with a single method call.
+// 1.3.1 - log user's email change for audit log
+// 1.3.0 - audit Trail and Consitent Naming for the commands with backward compatibility
+// 1.2.8 - fixed issue #6. Now authenticated users can not update their email verification timestamp anymore
+// 1.2.7 - merged PR 5 that improved middleware - https://github.com/hasinhayder/tyro/pull/5
+// 1.2.6 - merged PR 4 that improved the blade directives -https://github.com/hasinhayder/tyro/pull/4
+// 1.2.5 - merged PR 5 to avoid N+1 query issue

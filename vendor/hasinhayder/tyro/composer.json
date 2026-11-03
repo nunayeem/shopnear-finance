@@ -1,0 +1,68 @@
+{
+    "name": "hasinhayder/tyro",
+    "description": "Tyro is a complete Authentication, Authorization, and Role & Privilege (RBAC/ACL) management solution for Laravel 12 & 13, built on Laravel Sanctum.",
+    "keywords": [
+        "laravel",
+        "authentication",
+        "authorization",
+        "roles",
+        "privileges",
+        "rbac",
+        "permissions",
+        "sanctum",
+        "api",
+        "acl"
+    ],
+    "license": "MIT",
+    "type": "library",
+    "require": {
+        "php": "^8.2",
+        "illuminate/auth": "^12.0 || ^13.0",
+        "illuminate/database": "^12.0 || ^13.0",
+        "illuminate/support": "^12.0 || ^13.0",
+        "illuminate/http": "^12.0 || ^13.0",
+        "laravel/sanctum": "^4.0 || ^5.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.0 || ^11.0",
+        "laravel/pint": "^1.27",
+        "nunomaduro/collision": "^8.6 || ^9.0",
+        "pestphp/pest": "^3.0",
+        "pestphp/pest-plugin-laravel": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "HasinHayder\\Tyro\\": "src/"
+        },
+        "classmap": [
+            "database/seeders",
+            "database/factories"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "HasinHayder\\Tyro\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "HasinHayder\\Tyro\\Providers\\TyroServiceProvider"
+            ]
+        },
+        "branch-alias": {
+            "dev-main": "1.5.x-dev"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

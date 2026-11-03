@@ -1,0 +1,80 @@
+<?php
+
+namespace HasinHayder\TyroLogin\Console\Commands;
+
+use Illuminate\Console\Command;
+
+class VersionCommand extends Command {
+    /**
+     * The name and signature of the console command.
+     */
+    protected $signature = 'tyro-login:version';
+
+    /**
+     * The console command description.
+     */
+    protected $description = 'Display the current Tyro Login version';
+
+    /**
+     * Execute the console command.
+     */
+    public function handle(): int {
+
+        $version = '2.17.3'; // security(registration): names containing markup (< or >) are now rejected at registration, blocking HTML/link injection in user names
+        $this->info('');
+        $this->info('  ╔════════════════════════════════════════╗');
+        $this->info('  ║                                        ║');
+        $this->info('  ║        Tyro Login                      ║');
+        $this->info('  ║                                        ║');
+        $this->info('  ╚════════════════════════════════════════╝');
+        $this->info('');
+        $this->info("  Version: <comment>{$version}</comment>");
+        $this->info('  Laravel: <comment>'.app()->version().'</comment>');
+        $this->info('  PHP: <comment>'.PHP_VERSION.'</comment>');
+        $this->info('');
+        $this->info('  Documentation: <comment>https://hasinhayder.github.io/tyro-login/doc.html</comment>');
+        $this->info('  GitHub: <comment>https://github.com/hasinhayder/tyro-login</comment>');
+        $this->info('');
+
+        return self::SUCCESS;
+    }
+}
+// 2.17.3 - security(registration): the name field on /register now rejects markup (any < or > characters), so names containing HTML tags or links are refused instead of being stored
+// 2.17.2 - fix(login): the email/username field is now only rendered when password login is enabled or magic links are enabled; when TYRO_LOGIN_DISABLE_PASSWORD=true and magic links are off, the login page shows the passkey button only (no unusable email field)
+// 2.17.0 - feature(2fa): added tyro-login.two_factor.skip_roles (TYRO_LOGIN_2FA_SKIP_ROLES) — comma-separated roles never prompted to set up 2FA after registration, login, magic link login, or social login; authenticated skip-role users can still open /two-factor/setup to enroll voluntarily; forced_roles always takes precedence; suppression applies to the setup prompt only, confirmed users still receive the challenge; role checks unified in Helpers\TwoFactorHelper. security(2fa): POST two-factor/skip and /ignore now redirect users with confirmed 2FA back to the challenge instead of logging them in
+// 2.16.2 - security(2fa): recovery codes can no longer be fetched directly. Codes are rendered only as the direct response to the confirmation POST (after TOTP verification and only when 2FA is enabled), and each set of codes is displayed exactly once
+// 2.16.1 - fix(2fa): recovery codes "Finish" button now redirects to the configured post-login destination (tyro-login.redirects.after_login) instead of the 2FA skip endpoint, which could 403 when skipping was disabled or the user had a forced role
+// 2.16.0 - Added intermediary confirmation page for magic links to prevent social media and chat preview crawlers from consuming and expiring one-time links
+// 2.15.0 - Added tyro-login.emails.queue config (TYRO_LOGIN_EMAILS_QUEUE) to dispatch emails to the consuming app's queue instead of sending synchronously
+// 2.14.2 - Added Tyro Dashboard login heartbeat cache key invalidation on logout
+// 2.14.1 - Added Tyro Dashboard login heartbeat cache key
+// 2.14.0 - Added zero-config forced user logout on the next web request
+// 2.13.1 - fix(2fa): resolve duplicate two-factor/setup route URI shadowing the guest route, which bounced logged-out (unconfirmed) users back to the login page
+// 2.13.0 - Added new command tyro-login:status to check the status of Tyro Login package installation and configuration.
+// 2.12.1 - fix(2fa): resolve duplicate two-factor/setup route URI shadowing the guest route, which bounced logged-out (unconfirmed) users back to the login page
+// 2.12.0 - Added passkeys (WebAuthn) passwordless login, setup, and management (compatible with Laravel's native passkeys package)
+// 2.11.1 - Updated default YouTube video background URL
+// 2.11.0 - Added tidal background
+// 2.10.0 - Added Tidal, Animated Birds, Aurora Waves, Particle Network layouts, and global logo border radius option
+// 2.9.2 - YouTube video background: removed deprecated embed params (showinfo/modestbranding), documented youtube-nocookie privacy tradeoff and sound/autoplay limitation
+// 2.9.1 - fix(php8.4): use explicit nullable type for SocialAuthController::handlePostLoginRedirect fallback parameter
+// 2.9.0 - Added YouTube video background layout for authentication pages with configurable blur, overlay color, opacity, and audio settings
+// 2.8.1 - Refined AI skill rules — added 6 new rule files (captcha, invitation, password-policy, registration, verification, password-reset), aligned all rules with actual codebase patterns
+// 2.8.0 - Added AI Skill Feature for Tyro Login package maintainers
+// 2.7.1 - Fix 2FA setup routes duplication for Tyro-Dashboard workflow
+// 2.7.1 - Show error banner on login for expired magic links, Passwordless mode subtitle fix
+// 2.6.1 - Suspended user login bug fixed
+// 2.6.0 - Added dark-mode logo support for auth pages
+// 2.5.0 - Added tyro-login:update-config and tyro-login:update-style commands
+// 2.4.3 - fix(2fa): 2FA checks now properly apply to social login and magic link login flows
+// 2.4.2 - Added option to force specific user roles to set up 2FA, allowing administrators to require 2FA for certain roles while giving others the choice to skip it. This enhances security for high-risk accounts while maintaining flexibility for users with lower risk profiles.
+// 2.4.1 - Added 2FA ignore option to allow users to skip 2FA setup if they choose, with a cookie-based mechanism to remember their choice for a configurable number of days. This provides more flexibility for users who may not want to set up 2FA immediately while still encouraging them to do so in the future.
+// 2.4.0 - Laravel 13 support
+// 2.3.4 - fix(tests): all tests are passing now, so updating version to 2.3.4
+// 2.3.3 - fix(otp): improvement for OTP code generation by implementing proper type casting config values, issue #5
+// 2.3.2 - fix(social): automatically create account if the user doesn't exist after social login
+// 2.3.1 - Bug fix release for referral tracking logic
+// 2.3.0 - Add complete invitation/referral link management with automatic referral tracking during registration, including CLI commands for managing links and models for data persistence.
+// 2.2.1 - Fix migration loading issue
+// 2.2.0 - magic link ui
+// 2.1.0 - magic link artisan command

@@ -1,0 +1,215 @@
+<?php
+
+namespace HasinHayder\TyroLogin\Providers;
+
+use HasinHayder\TyroLogin\Console\Commands\DocCommand;
+use HasinHayder\TyroLogin\Console\Commands\InstallCommand;
+use HasinHayder\TyroLogin\Console\Commands\LogoutCommand;
+use HasinHayder\TyroLogin\Console\Commands\PublishCommand;
+use HasinHayder\TyroLogin\Console\Commands\PublishStyleCommand;
+use HasinHayder\TyroLogin\Console\Commands\SetupAiSkillCommand;
+use HasinHayder\TyroLogin\Console\Commands\StarCommand;
+use HasinHayder\TyroLogin\Console\Commands\UnverifyUserCommand;
+use HasinHayder\TyroLogin\Console\Commands\UpdateConfigCommand;
+use HasinHayder\TyroLogin\Console\Commands\UpdateStylesCommand;
+use HasinHayder\TyroLogin\Console\Commands\VerifyUserCommand;
+use HasinHayder\TyroLogin\Console\Commands\VersionCommand;
+use HasinHayder\TyroLogin\Events\ForceLogout;
+use HasinHayder\TyroLogin\Http\Middleware\ForceLogoutMiddleware;
+use HasinHayder\TyroLogin\Listeners\ForceLogoutListener;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\ServiceProvider;
+
+class TyroLoginServiceProvider extends ServiceProvider {
+    public function register(): void {
+        $this->mergeConfigFrom(__DIR__.'/../../config/tyro-login.php', 'tyro-login');
+
+        $this->alignPasskeysConfig();
+    }
+
+    public function boot(): void {
+        $this->registerPublishing();
+        $this->registerRoutes();
+        $this->registerViews();
+        $this->registerCommands();
+        $this->registerMigrations();
+        $this->configureAuthRedirection();
+        $this->registerEvents();
+        $this->registerForceLogoutMiddleware();
+        $this->registerPasskeysAuthorization();
+    }
+
+    /**
+     * When laravel/passkeys is installed, align its config with tyro-login so
+     * that passkey login redirects to the same place as email login, and so the
+     * management (registration) routes don't depend on a `password.confirm`
+     * route that tyro-login does not register.
+     *
+     * Done in register() so the values are set before laravel/passkeys boots.
+     */
+    protected function alignPasskeysConfig(): void {
+        if (! class_exists(\Laravel\Passkeys\Passkeys::class)) {
+            return;
+        }
+
+        config([
+            'passkeys.redirect' => config('tyro-login.redirects.after_login', '/'),
+            'passkeys.management_middleware' => [],
+        ]);
+    }
+
+    /**
+     * Block passkey login for suspended users, mirroring the email login flow.
+     */
+    protected function registerPasskeysAuthorization(): void {
+        if (! class_exists(\Laravel\Passkeys\Passkeys::class)) {
+            return;
+        }
+
+        if (! config('tyro-login.passkeys.enabled', false)) {
+            return;
+        }
+
+        \Laravel\Passkeys\Passkeys::authorizeLoginUsing(function ($request, $user, $passkey) {
+            $suspended = method_exists($user, 'isSuspended')
+                ? $user->isSuspended()
+                : (bool) ($user->suspended_at ?? false);
+
+            if ($suspended) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'credential' => [config('tyro-login.suspension.message', 'Your account has been suspended. Please contact support for more information.')],
+                ]);
+            }
+
+            return true;
+        });
+    }
+
+    protected function registerRoutes(): void {
+        Route::group([
+            'prefix' => config('tyro-login.routes.prefix', ''),
+            'middleware' => config('tyro-login.routes.middleware', ['web']),
+            'as' => 'tyro-login.',
+        ], function (): void {
+            $this->loadRoutesFrom(__DIR__.'/../../routes/web.php');
+        });
+    }
+
+    protected function registerViews(): void {
+        $this->loadViewsFrom(__DIR__.'/../../resources/views', 'tyro-login');
+    }
+
+    protected function registerMigrations(): void {
+        // Always load migrations - both 2FA and social login are independent features
+        $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
+    }
+
+    protected function registerPublishing(): void {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        // Publish config
+        $this->publishes([
+            __DIR__.'/../../config/tyro-login.php' => config_path('tyro-login.php'),
+        ], 'tyro-login-config');
+
+        // Publish views
+        $this->publishes([
+            __DIR__.'/../../resources/views' => resource_path('views/vendor/tyro-login'),
+        ], 'tyro-login-views');
+
+        // Publish email templates only
+        $this->publishes([
+            __DIR__.'/../../resources/views/emails' => resource_path('views/vendor/tyro-login/emails'),
+        ], 'tyro-login-emails');
+
+        // Publish styles
+        $this->publishes([
+            __DIR__.'/../../resources/views/partials/shadcn-theme.blade.php' => resource_path('views/vendor/tyro-login/partials/shadcn-theme.blade.php'),
+            __DIR__.'/../../resources/views/partials/styles.blade.php' => resource_path('views/vendor/tyro-login/partials/styles.blade.php'),
+        ], 'tyro-login-styles');
+
+        // Publish theme only (for quick theme customization)
+        $this->publishes([
+            __DIR__.'/../../resources/views/partials/shadcn-theme.blade.php' => resource_path('views/vendor/tyro-login/partials/shadcn-theme.blade.php'),
+        ], 'tyro-login-theme');
+
+        // Publish assets
+        $this->publishes([
+            __DIR__.'/../../resources/assets' => public_path('vendor/tyro-login'),
+        ], 'tyro-login-assets');
+
+        // Publish migrations (for social login)
+        $this->publishes([
+            __DIR__.'/../../database/migrations' => database_path('migrations'),
+        ], 'tyro-login-migrations');
+
+        // Publish all
+        $this->publishes([
+            __DIR__.'/../../config/tyro-login.php' => config_path('tyro-login.php'),
+            __DIR__.'/../../resources/views' => resource_path('views/vendor/tyro-login'),
+            __DIR__.'/../../resources/assets' => public_path('vendor/tyro-login'),
+        ], 'tyro-login');
+    }
+
+    /**
+     * Force logout: flag a user in the cache so the middleware logs them
+     * out on their next request.
+     */
+    protected function registerEvents(): void {
+        Event::listen(ForceLogout::class, ForceLogoutListener::class);
+    }
+
+    protected function registerForceLogoutMiddleware(): void {
+        Route::aliasMiddleware('tyro-login.force-logout', ForceLogoutMiddleware::class);
+
+        if (config('tyro-login.force_logout.enabled', true)) {
+            Route::matched(function (\Illuminate\Routing\Events\RouteMatched $event): void {
+                $middleware = $event->route->middleware();
+
+                if (in_array('web', $middleware, true)
+                    && ! in_array(ForceLogoutMiddleware::class, $middleware, true)) {
+                    $event->route->middleware(ForceLogoutMiddleware::class);
+                }
+            });
+        }
+
+    }
+
+    protected function configureAuthRedirection(): void {
+        // Configure Laravel's authentication middleware to redirect to tyro-login route
+        $this->app->resolving(\Illuminate\Auth\Middleware\Authenticate::class, function ($authenticate) {
+            $authenticate->redirectUsing(function () {
+                return route('tyro-login.login');
+            });
+        });
+    }
+
+    protected function registerCommands(): void {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        $this->commands([
+            InstallCommand::class,
+            SetupAiSkillCommand::class,
+            PublishCommand::class,
+            PublishStyleCommand::class,
+            VersionCommand::class,
+            UpdateConfigCommand::class,
+            UpdateStylesCommand::class,
+            DocCommand::class,
+            StarCommand::class,
+            VerifyUserCommand::class,
+            UnverifyUserCommand::class,
+            \HasinHayder\TyroLogin\Console\Commands\ResetTwoFactorCommand::class,
+            \HasinHayder\TyroLogin\Console\Commands\MagicLinkCommand::class,
+            \HasinHayder\TyroLogin\Console\Commands\InviteLinkCommand::class,
+            \HasinHayder\TyroLogin\Console\Commands\SetupPasskeysCommand::class,
+            \HasinHayder\TyroLogin\Console\Commands\StatusCommand::class,
+            LogoutCommand::class,
+        ]);
+    }
+}

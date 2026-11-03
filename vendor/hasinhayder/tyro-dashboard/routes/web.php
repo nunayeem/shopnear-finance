@@ -1,0 +1,265 @@
+<?php
+
+use HasinHayder\TyroDashboard\Http\Controllers\AuditController;
+use HasinHayder\TyroDashboard\Http\Controllers\CheckpointController;
+use HasinHayder\TyroDashboard\Http\Controllers\ComponentsController;
+use HasinHayder\TyroDashboard\Http\Controllers\DashboardController;
+use HasinHayder\TyroDashboard\Http\Controllers\EmailerController;
+use HasinHayder\TyroDashboard\Http\Controllers\HealthController;
+use HasinHayder\TyroDashboard\Http\Controllers\HeartbeatController;
+use HasinHayder\TyroDashboard\Http\Controllers\InvitationController;
+use HasinHayder\TyroDashboard\Http\Controllers\LogViewController;
+use HasinHayder\TyroDashboard\Http\Controllers\MediaCategoryController;
+use HasinHayder\TyroDashboard\Http\Controllers\MediaController;
+use HasinHayder\TyroDashboard\Http\Controllers\PrivilegeController;
+use HasinHayder\TyroDashboard\Http\Controllers\ProfileController;
+use HasinHayder\TyroDashboard\Http\Controllers\RoleController;
+use HasinHayder\TyroDashboard\Http\Controllers\SmtpController;
+use HasinHayder\TyroDashboard\Http\Controllers\SystemSettingsController;
+use HasinHayder\TyroDashboard\Http\Controllers\UserController;
+use HasinHayder\TyroDashboard\Http\Controllers\WidgetsController;
+use HasinHayder\TyroDashboard\Http\Controllers\XComponentsController;
+use HasinHayder\TyroDashboard\Support\DashboardRoute;
+use Illuminate\Support\Facades\Route;
+
+/*
+|--------------------------------------------------------------------------
+| Tyro Dashboard Routes
+|--------------------------------------------------------------------------
+|
+| Here are the routes for the Tyro Dashboard package.
+|
+*/
+
+// Dashboard Home
+Route::get('/', [DashboardController::class, 'index'])->name('index');
+
+// Example and Demo Routes
+if (! config('tyro-dashboard.disable_examples', false) && ! app()->environment('production')) {
+    // Backwards-compatible alias for the Examples Components page
+    Route::get('/components', [ComponentsController::class, 'components'])->name('components');
+
+    // Optional alias (kept for backwards compatibility if anyone bookmarked it)
+    Route::get('/examples/components', [ComponentsController::class, 'components'])->name('examples.components');
+
+    // Widgets (interactive examples)
+    Route::get('/widgets', [WidgetsController::class, 'widgets'])->name('widgets');
+    Route::get('/examples/widgets', [WidgetsController::class, 'widgets'])->name('examples.widgets');
+
+    // X-Components (reusable form components demo)
+    if (class_exists('HasinHayder\\TyroDashboardComponents\\TyroDashboardComponentsServiceProvider')) {
+        Route::get('/x-components', [XComponentsController::class, 'index'])->name('x-components');
+    }
+
+    // Same-origin proxies for third-party widget data (avoid browser CORS)
+    Route::get('/examples/widgets/xkcd/{id?}', [WidgetsController::class, 'xkcd'])->where('id', '[0-9]+')->name('examples.widgets.xkcd');
+    Route::get('/examples/widgets/stocks/{symbol}', [WidgetsController::class, 'stockQuote'])->name('examples.widgets.stocks');
+    Route::get('/examples/widgets/fx/{base}', [WidgetsController::class, 'fxRates'])->name('examples.widgets.fx');
+    Route::get('/examples/widgets/flights', [WidgetsController::class, 'flightStates'])->name('examples.widgets.flights');
+}
+
+// Profile Management (all authenticated users)
+Route::prefix('profile')->name('profile')->group(function () {
+    Route::get('/', [ProfileController::class, 'index']);
+    Route::put('/update', [ProfileController::class, 'update'])->name('.update');
+    Route::put('/password', [ProfileController::class, 'updatePassword'])->name('.password');
+    Route::delete('/photo', [ProfileController::class, 'deletePhoto'])->name('.photo.delete');
+    Route::post('/2fa/setup', [ProfileController::class, 'setup2FA'])->name('.2fa.setup');
+    Route::delete('/2fa/reset', [ProfileController::class, 'reset2FA'])->name('.2fa.reset');
+
+    // Passkey management (only when the passkeys feature is enabled and installed)
+    if (config('tyro-login.passkeys.enabled', false) && class_exists(\Laravel\Passkeys\Passkeys::class)) {
+        Route::put('/passkeys/{id}/rename', [ProfileController::class, 'renamePasskey'])->name('.passkeys.rename');
+        Route::delete('/passkeys/{id}', [ProfileController::class, 'destroyPasskey'])->name('.passkeys.destroy');
+    }
+});
+
+// Invitation/Referral System (all authenticated users)
+if (config('tyro-dashboard.features.invitation_system', true)) {
+    Route::prefix('invitations')->name('invitations.')->group(function () {
+        Route::get('/', [InvitationController::class, 'userIndex'])->name('index');
+        Route::post('/create', [InvitationController::class, 'userCreate'])->name('create');
+    });
+}
+
+// Leave impersonation (accessible to anyone currently impersonating)
+Route::post('/leave-impersonation', [UserController::class, 'leaveImpersonation'])->name('leave-impersonation');
+
+// Heartbeat — cache-based online detection (all authenticated users)
+if (config('tyro-dashboard.features.heartbeat', true)) {
+    Route::post('/heartbeat', [HeartbeatController::class, 'store'])->name('heartbeat');
+}
+
+// Media Library (all authenticated users)
+Route::get('media', [MediaController::class, 'index'])->name('media');
+Route::prefix('media')->name('media.')->group(function () {
+    Route::post('/upload', [MediaController::class, 'store'])->name('upload');
+    Route::get('/picker', [MediaController::class, 'picker'])->name('picker');
+    Route::get('/image-search', [MediaController::class, 'imageSearch'])->name('image-search');
+    Route::post('/image-import', [MediaController::class, 'imageImport'])->name('image-import');
+    Route::post('/starred-images', [MediaController::class, 'storeStarredImage'])->name('starred-images.store');
+    Route::delete('/starred-images', [MediaController::class, 'destroyStarredImage'])->name('starred-images.destroy');
+    Route::delete('/bulk-delete', [MediaController::class, 'bulkDestroy'])->name('bulk-destroy');
+    Route::post('/bulk-category-attach', [MediaController::class, 'bulkCategoryAttach'])->name('bulk-category-attach');
+    Route::post('/bulk-category-unlink', [MediaController::class, 'bulkCategoryUnlink'])->name('bulk-category-unlink');
+
+    // Media Categories
+    Route::get('/categories', [MediaCategoryController::class, 'index'])->name('categories.index');
+    Route::get('/categories/list', [MediaCategoryController::class, 'list'])->name('categories.list');
+    Route::post('/categories', [MediaCategoryController::class, 'store'])->name('categories.store');
+    Route::post('/categories/bulk', [MediaCategoryController::class, 'storeBulk'])->name('categories.bulk-store');
+    Route::put('/categories/{category}', [MediaCategoryController::class, 'update'])->name('categories.update');
+    Route::delete('/categories/{category}', [MediaCategoryController::class, 'destroy'])->name('categories.destroy');
+    Route::post('/categories/{category}/add-media', [MediaCategoryController::class, 'addMedia'])->name('categories.add-media');
+
+    Route::patch('/{media}/categories', [MediaController::class, 'updateCategories'])->name('update-categories');
+    Route::patch('/{media}/alt', [MediaController::class, 'updateAlt'])->name('alt');
+    Route::patch('/{media}/rename', [MediaController::class, 'rename'])->name('rename');
+    Route::patch('/{media}/toggle-favorite', [MediaController::class, 'toggleFavorite'])->name('toggle-favorite');
+    Route::post('/{media}/crop-resize', [MediaController::class, 'cropResize'])->name('crop-resize');
+    Route::delete('/{media}', [MediaController::class, 'destroy'])->name('destroy')->where('media', '[0-9]+');
+});
+
+// Admin-only routes
+Route::middleware('tyro-dashboard.admin')->group(function () {
+    // User Management
+    Route::prefix('users')->name('users.')->group(function () {
+        Route::post('/bulk-delete', [UserController::class, 'bulkDestroy'])->name('bulk-destroy');
+        Route::get('/', [UserController::class, 'index'])->name('index');
+        Route::get('/create', [UserController::class, 'create'])->name('create');
+        Route::post('/', [UserController::class, 'store'])->name('store');
+        Route::get('/{id}', function ($id) {
+            return redirect()->route(DashboardRoute::name('users.edit'), $id);
+        })->name('show');
+        Route::get('/{id}/edit', [UserController::class, 'edit'])->name('edit');
+        Route::put('/{id}', [UserController::class, 'update'])->name('update');
+        Route::delete('/{id}/2fa', [UserController::class, 'reset2FA'])->name('2fa.reset');
+        Route::post('/{id}/suspend', [UserController::class, 'suspend'])->name('suspend');
+        Route::post('/{id}/unsuspend', [UserController::class, 'unsuspend'])->name('unsuspend');
+        Route::post('/{id}/login-as', [UserController::class, 'loginAs'])->name('login-as');
+        Route::post('/{id}/logout', [UserController::class, 'logout'])->name('logout');
+        Route::delete('/{id}/photo', [ProfileController::class, 'deleteUserPhoto'])->name('photo.delete');
+        Route::delete('/{id}', [UserController::class, 'destroy'])->name('destroy');
+    });
+
+    // Role Management
+    Route::prefix('roles')->name('roles.')->group(function () {
+        Route::get('/', [RoleController::class, 'index'])->name('index');
+        Route::get('/create', [RoleController::class, 'create'])->name('create');
+        Route::post('/', [RoleController::class, 'store'])->name('store');
+        Route::get('/{id}', [RoleController::class, 'show'])->name('show');
+        Route::get('/{id}/edit', [RoleController::class, 'edit'])->name('edit');
+        Route::put('/{id}', [RoleController::class, 'update'])->name('update');
+        Route::delete('/{id}', [RoleController::class, 'destroy'])->name('destroy');
+        Route::delete('/{id}/users/{userId}', [RoleController::class, 'removeUser'])->name('remove-user');
+    });
+
+    // Privilege Management
+    Route::prefix('privileges')->name('privileges.')->group(function () {
+        Route::get('/', [PrivilegeController::class, 'index'])->name('index');
+        Route::get('/create', [PrivilegeController::class, 'create'])->name('create');
+        Route::post('/', [PrivilegeController::class, 'store'])->name('store');
+        Route::get('/{id}', [PrivilegeController::class, 'show'])->name('show');
+        Route::get('/{id}/edit', [PrivilegeController::class, 'edit'])->name('edit');
+        Route::put('/{id}', [PrivilegeController::class, 'update'])->name('update');
+        Route::delete('/{id}', [PrivilegeController::class, 'destroy'])->name('destroy');
+        Route::delete('/{id}/roles/{roleId}', [PrivilegeController::class, 'removeRole'])->name('remove-role');
+    });
+
+    // Invitation Management (Admin)
+    if (config('tyro-dashboard.features.invitation_system', true)) {
+        Route::prefix('invitations/admin')->name('invitations.admin.')->group(function () {
+            Route::get('/', [InvitationController::class, 'adminIndex'])->name('index');
+            Route::get('/create', [InvitationController::class, 'adminCreate'])->name('create');
+            Route::post('/', [InvitationController::class, 'adminStore'])->name('store');
+            Route::delete('/{id}', [InvitationController::class, 'adminDestroy'])->name('destroy');
+        });
+    }
+
+    // Audit Logs (Admin)
+    Route::prefix('audits')->name('audits.')->group(function () {
+        Route::get('/', [AuditController::class, 'index'])->name('index');
+        Route::get('/export', [AuditController::class, 'exportCsv'])->name('export');
+        Route::post('/bulk-delete', [AuditController::class, 'bulkDestroy'])->name('bulk-destroy');
+        Route::delete('/flush', [AuditController::class, 'flush'])->name('flush');
+        Route::delete('/{id}', [AuditController::class, 'destroy'])->name('destroy');
+    });
+
+    // System Settings (Admin) - manage .env config values
+    if (config('tyro-dashboard.features.system_settings', true)) {
+        Route::prefix('settings/system')->name('settings.system.')->group(function () {
+            Route::get('/', [SystemSettingsController::class, 'index'])->name('index');
+            Route::post('/update', [SystemSettingsController::class, 'update'])->name('update');
+            Route::post('/clear-config-cache', [SystemSettingsController::class, 'clearConfigCache'])->name('clear-config-cache');
+        });
+    }
+
+    // SMTP Settings (Admin) - manage MAIL_* env values and SMTP presets
+    if (config('tyro-dashboard.features.smtp_settings', true)) {
+        Route::prefix('settings/smtp')->name('settings.smtp.')->group(function () {
+            Route::get('/', [SmtpController::class, 'index'])->name('index');
+            Route::post('/update', [SmtpController::class, 'update'])->name('update');
+            Route::post('/clear-config-cache', [SmtpController::class, 'clearConfigCache'])->name('clear-config-cache');
+            Route::post('/test', [SmtpController::class, 'sendTest'])->name('test');
+            Route::post('/presets', [SmtpController::class, 'storePreset'])->name('presets.store');
+            Route::put('/presets/{id}', [SmtpController::class, 'updatePreset'])->name('presets.update');
+            Route::delete('/presets/{id}', [SmtpController::class, 'destroyPreset'])->name('presets.destroy');
+            Route::post('/presets/{id}/apply', [SmtpController::class, 'applyPreset'])->name('presets.apply');
+        });
+    }
+
+    // Emailer (Admin) - send queued emails with design presets
+    if (config('tyro-dashboard.features.emailer', true)) {
+        Route::prefix('emailer')->name('emailer.')->group(function () {
+            Route::get('/', [EmailerController::class, 'index'])->name('index');
+            Route::post('/send', [EmailerController::class, 'send'])->name('send');
+            Route::post('/preview', [EmailerController::class, 'preview'])->name('preview');
+        });
+    }
+
+    // Checkpoints (Admin) - visual manager for hasinhayder/tyro-checkpoint
+    if (config('tyro-dashboard.features.checkpoints', true) && class_exists(\HasinHayder\TyroCheckpoint\TyroCheckpointServiceProvider::class)) {
+        Route::prefix('checkpoints')->name('checkpoints.')->group(function () {
+            Route::get('/', [CheckpointController::class, 'index'])->name('index');
+            Route::post('/', [CheckpointController::class, 'create'])->name('create');
+            Route::get('/download/{identifier}', [CheckpointController::class, 'download'])->name('download');
+            Route::post('/restore', [CheckpointController::class, 'restore'])->name('restore');
+            Route::post('/delete', [CheckpointController::class, 'delete'])->name('delete');
+            Route::post('/flush', [CheckpointController::class, 'flush'])->name('flush');
+            Route::post('/note', [CheckpointController::class, 'note'])->name('note');
+            Route::post('/rename', [CheckpointController::class, 'rename'])->name('rename');
+            Route::post('/toggle-lock', [CheckpointController::class, 'toggleLock'])->name('toggle-lock');
+            Route::post('/toggle-flag', [CheckpointController::class, 'toggleFlag'])->name('toggle-flag');
+            Route::post('/encrypt', [CheckpointController::class, 'encrypt'])->name('encrypt');
+            Route::post('/generate-key', [CheckpointController::class, 'generateKey'])->name('generate-key');
+            Route::post('/import', [CheckpointController::class, 'import'])->name('import');
+        });
+    }
+
+    // System Health (Admin) - read-only diagnostics
+    if (config('tyro-dashboard.features.health', true)) {
+        Route::prefix('health')->name('health.')->group(function () {
+            Route::get('/', [HealthController::class, 'index'])->name('index');
+        });
+    }
+
+    // Log Viewer (Admin) - browse application log files
+    if (config('tyro-dashboard.features.log_viewer', true)) {
+        Route::prefix('logs')->name('logs.')->group(function () {
+            Route::get('/', [LogViewController::class, 'index'])->name('index');
+            Route::delete('/clear', [LogViewController::class, 'clear'])->name('clear');
+        });
+    }
+});
+
+// Dynamic Resources (outside admin middleware - handles its own access control)
+// This route group handles all dynamic resources defined in config or via HasCrud trait
+Route::prefix('resources/{resource}')->name('resources.')->group(function () {
+    Route::get('/', [\HasinHayder\TyroDashboard\Http\Controllers\ResourceController::class, 'index'])->name('index');
+    Route::get('/create', [\HasinHayder\TyroDashboard\Http\Controllers\ResourceController::class, 'create'])->name('create');
+    Route::post('/', [\HasinHayder\TyroDashboard\Http\Controllers\ResourceController::class, 'store'])->name('store');
+    Route::get('/{id}', [\HasinHayder\TyroDashboard\Http\Controllers\ResourceController::class, 'show'])->name('show');
+    Route::get('/{id}/edit', [\HasinHayder\TyroDashboard\Http\Controllers\ResourceController::class, 'edit'])->name('edit');
+    Route::put('/{id}', [\HasinHayder\TyroDashboard\Http\Controllers\ResourceController::class, 'update'])->name('update');
+    Route::delete('/{id}', [\HasinHayder\TyroDashboard\Http\Controllers\ResourceController::class, 'destroy'])->name('destroy');
+});
