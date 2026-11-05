@@ -24,7 +24,12 @@ return [
     | (user management, role management, privilege management, settings).
     |
     */
-    'admin_roles' => ['admin', 'super-admin'],
+    'admin_roles' => [
+        'admin', 
+        'super-admin',
+        // 'accountant',
+        // 'investor',
+    ],
 
     /*
     |--------------------------------------------------------------------------
