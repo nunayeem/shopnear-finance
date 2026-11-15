@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Artisan;
@@ -16,10 +17,10 @@ class MaintenanceController extends Controller
     public function index(Request $request): Response|JsonResponse
     {
         if (! $this->isAuthorized($request)) {
-            return $this->renderUnauthorized($request);
+            return $this->renderUnauthorized($request, 'Maintenance Dashboard');
         }
 
-        $tokenParam = $this->getTokenQueryParam($request);
+        $tokenParam = $this->getSecretQueryParam($request);
 
         $html = $this->renderDashboardHtml($tokenParam);
 
@@ -41,12 +42,31 @@ class MaintenanceController extends Controller
     }
 
     /**
+     * Lock the maintenance session.
+     */
+    public function lock(Request $request): Response|RedirectResponse|JsonResponse
+    {
+        if ($request->hasSession()) {
+            $request->session()->forget('maintenance_authenticated');
+        }
+
+        if ($request->wantsJson() || $request->query('format') === 'json') {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Maintenance session locked.',
+            ]);
+        }
+
+        return redirect('/maintenance');
+    }
+
+    /**
      * Run database migrations.
      */
     public function migrate(Request $request): Response|JsonResponse
     {
         if (! $this->isAuthorized($request)) {
-            return $this->renderUnauthorized($request);
+            return $this->renderUnauthorized($request, 'Database Migration');
         }
 
         $this->ensureCacheDirectoryWritable();
@@ -82,7 +102,7 @@ class MaintenanceController extends Controller
     public function migrateStatus(Request $request): Response|JsonResponse
     {
         if (! $this->isAuthorized($request)) {
-            return $this->renderUnauthorized($request);
+            return $this->renderUnauthorized($request, 'Migration Status');
         }
 
         $output = '';
@@ -111,7 +131,7 @@ class MaintenanceController extends Controller
     public function optimizeClear(Request $request): Response|JsonResponse
     {
         if (! $this->isAuthorized($request)) {
-            return $this->renderUnauthorized($request);
+            return $this->renderUnauthorized($request, 'Optimize Clear');
         }
 
         $this->ensureCacheDirectoryWritable();
@@ -144,7 +164,7 @@ class MaintenanceController extends Controller
     public function clearCache(Request $request): Response|JsonResponse
     {
         if (! $this->isAuthorized($request)) {
-            return $this->renderUnauthorized($request);
+            return $this->renderUnauthorized($request, 'Cache & Optimization Clear');
         }
 
         $this->ensureCacheDirectoryWritable();
@@ -186,7 +206,7 @@ class MaintenanceController extends Controller
     public function clearOptimizeMigrate(Request $request): Response|JsonResponse
     {
         if (! $this->isAuthorized($request)) {
-            return $this->renderUnauthorized($request);
+            return $this->renderUnauthorized($request, 'Clear Cache, Optimize Clear & Run Migrate');
         }
 
         $this->ensureCacheDirectoryWritable();
@@ -230,6 +250,57 @@ class MaintenanceController extends Controller
     }
 
     /**
+     * Retrieve the configured secret code.
+     */
+    protected function getExpectedSecret(): string
+    {
+        $secret = config('app.maintenance_secret') ?? env('MAINTENANCE_SECRET') ?? env('MAINTENANCE_TOKEN', 'shopnear@secret2026');
+
+        return trim((string) $secret);
+    }
+
+    /**
+     * Check if request has authorization secret code or active session.
+     */
+    protected function isAuthorized(Request $request): bool
+    {
+        $expectedSecret = $this->getExpectedSecret();
+
+        if ($request->hasSession() && $request->session()->get('maintenance_authenticated') === true) {
+            return true;
+        }
+
+        $providedSecret = $request->input('secret')
+            ?? $request->input('code')
+            ?? $request->input('token')
+            ?? $request->query('secret')
+            ?? $request->query('code')
+            ?? $request->query('token')
+            ?? $request->header('X-Maintenance-Secret')
+            ?? $request->header('X-Maintenance-Token');
+
+        if ($providedSecret !== null && hash_equals($expectedSecret, (string) $providedSecret)) {
+            if ($request->hasSession()) {
+                $request->session()->put('maintenance_authenticated', true);
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Get query parameter string for secret if present.
+     */
+    protected function getSecretQueryParam(Request $request): string
+    {
+        $secret = $request->query('secret') ?? $request->query('code') ?? $request->query('token');
+
+        return ! empty($secret) ? '?secret='.urlencode((string) $secret) : '';
+    }
+
+    /**
      * Ensure bootstrap/cache directory exists and is writable across platforms.
      */
     protected function ensureCacheDirectoryWritable(): void
@@ -248,63 +319,69 @@ class MaintenanceController extends Controller
     }
 
     /**
-     * Check if request has authorization token when configured.
+     * Render 401/403 unauthorized response or passcode form.
      */
-    protected function isAuthorized(Request $request): bool
-    {
-        $configuredToken = config('app.maintenance_token') ?? env('MAINTENANCE_TOKEN');
-
-        if (empty($configuredToken)) {
-            return true;
-        }
-
-        $providedToken = $request->query('token') ?? $request->header('X-Maintenance-Token');
-
-        return hash_equals((string) $configuredToken, (string) $providedToken);
-    }
-
-    /**
-     * Get query parameter string for token if present.
-     */
-    protected function getTokenQueryParam(Request $request): string
-    {
-        $token = $request->query('token') ?? (config('app.maintenance_token') ?? env('MAINTENANCE_TOKEN'));
-
-        return ! empty($token) ? '?token='.urlencode((string) $token) : '';
-    }
-
-    /**
-     * Render 403 unauthorized response.
-     */
-    protected function renderUnauthorized(Request $request): Response|JsonResponse
+    protected function renderUnauthorized(Request $request, string $actionName): Response|JsonResponse
     {
         if ($request->wantsJson() || $request->query('format') === 'json') {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Unauthorized. Please provide a valid ?token= parameter.',
+                'message' => 'Unauthorized. Invalid or missing secret code. Pass ?secret=YOUR_SECRET_CODE',
             ], 403);
         }
 
-        $html = <<<'HTML'
+        $hasAttempted = $request->has('secret') || $request->has('code') || $request->has('token');
+        $errorMessage = $hasAttempted ? '<div class="alert-error">Incorrect secret code. Access denied.</div>' : '';
+        $actionEscaped = htmlspecialchars($actionName, ENT_QUOTES, 'UTF-8');
+        $targetUrl = htmlspecialchars($request->fullUrl(), ENT_QUOTES, 'UTF-8');
+
+        $html = <<<HTML
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>403 Unauthorized | Maintenance Access</title>
+    <title>Authentication Required | {$actionEscaped}</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-        .card { background: #1e293b; padding: 2rem; border-radius: 0.75rem; border: 1px solid #334155; max-width: 480px; width: 90%; text-align: center; }
-        h1 { color: #f87171; margin-top: 0; }
-        p { color: #94a3b8; line-height: 1.5; }
-        code { background: #0f172a; padding: 0.2rem 0.4rem; border-radius: 0.25rem; color: #38bdf8; }
+        :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --muted: #94a3b8; --border: #334155; --accent: #38bdf8; --error: #ef4444; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 1rem; }
+        .card { background: var(--card); padding: 2.25rem; border-radius: 0.75rem; border: 1px solid var(--border); max-width: 440px; width: 100%; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.4); text-align: center; }
+        .icon { width: 52px; height: 52px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 1rem; color: var(--accent); }
+        h1 { margin: 0 0 0.5rem 0; font-size: 1.35rem; color: #fff; }
+        p { color: var(--muted); font-size: 0.9rem; margin: 0 0 1.5rem 0; line-height: 1.5; }
+        .alert-error { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 0.65rem 0.9rem; border-radius: 0.5rem; font-size: 0.85rem; margin-bottom: 1.25rem; text-align: left; }
+        .form-group { text-align: left; margin-bottom: 1.25rem; }
+        label { display: block; font-size: 0.82rem; font-weight: 600; color: #cbd5e1; margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.04em; }
+        input[type="password"], input[type="text"] { width: 100%; padding: 0.75rem 0.9rem; border-radius: 0.5rem; background: #0b1120; border: 1px solid var(--border); color: #fff; font-size: 0.95rem; outline: none; transition: border-color 0.2s; }
+        input[type="password"]:focus, input[type="text"]:focus { border-color: var(--accent); }
+        .btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; background: #0284c7; color: #fff; border: none; padding: 0.75rem 1rem; border-radius: 0.5rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #0369a1; }
+        .hint { font-size: 0.78rem; color: #64748b; margin-top: 1rem; }
+        .hint code { color: #94a3b8; background: #0b1120; padding: 0.15rem 0.35rem; border-radius: 0.25rem; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h1>403 Forbidden</h1>
-        <p>A maintenance security token is required to execute web maintenance commands.</p>
-        <p>Please append <code>?token=YOUR_TOKEN</code> to the URL.</p>
+        <div class="icon">
+            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+        </div>
+        <h1>Authentication Required</h1>
+        <p>Enter the custom secret code to access <strong>{$actionEscaped}</strong>.</p>
+        {$errorMessage}
+        <form method="POST" action="{$targetUrl}">
+            <div class="form-group">
+                <label for="secret">Secret Code</label>
+                <input type="password" id="secret" name="secret" placeholder="Enter custom secret code..." required autofocus>
+            </div>
+            <button type="submit" class="btn">Unlock &amp; Execute</button>
+        </form>
+        <div class="hint">
+            You can also pass it in the URL: <code>?secret=YOUR_CODE</code>
+        </div>
     </div>
 </body>
 </html>
@@ -327,7 +404,7 @@ HTML;
             ], $success ? 200 : 500);
         }
 
-        $tokenParam = $this->getTokenQueryParam($request);
+        $secretParam = $this->getSecretQueryParam($request);
         $escapedOutput = htmlspecialchars($output, ENT_QUOTES, 'UTF-8');
         $escapedTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
         $escapedCommand = htmlspecialchars($command, ENT_QUOTES, 'UTF-8');
@@ -361,6 +438,8 @@ HTML;
         .btn-primary:hover { background: #0369a1; }
         .btn-success { background: #16a34a; }
         .btn-success:hover { background: #15803d; }
+        .btn-danger { background: #b91c1c; }
+        .btn-danger:hover { background: #991b1b; }
     </style>
 </head>
 <body>
@@ -377,12 +456,13 @@ HTML;
         <div class="card">
             <h3 style="margin-top:0; margin-bottom: 0.75rem;">Quick Maintenance Actions</h3>
             <div class="nav-grid">
-                <a href="/migrate{$tokenParam}" class="btn btn-primary">Run Migrate</a>
-                <a href="/optimize-clear{$tokenParam}" class="btn">Optimize Clear</a>
-                <a href="/clear-cache{$tokenParam}" class="btn">Clear Cache</a>
-                <a href="/clear-optimize-migrate{$tokenParam}" class="btn btn-success">Clear &amp; Migrate All</a>
-                <a href="/migrate-status{$tokenParam}" class="btn">Migration Status</a>
-                <a href="/{$tokenParam}" class="btn">Back to App</a>
+                <a href="/migrate{$secretParam}" class="btn btn-primary">Run Migrate</a>
+                <a href="/optimize-clear{$secretParam}" class="btn">Optimize Clear</a>
+                <a href="/clear-cache{$secretParam}" class="btn">Clear Cache</a>
+                <a href="/clear-optimize-migrate{$secretParam}" class="btn btn-success">Clear &amp; Migrate All</a>
+                <a href="/migrate-status{$secretParam}" class="btn">Migration Status</a>
+                <a href="/maintenance{$secretParam}" class="btn">Control Center</a>
+                <a href="/maintenance/lock" class="btn btn-danger">Lock Session</a>
             </div>
         </div>
     </div>
@@ -406,12 +486,13 @@ HTML;
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Maintenance Control Center</title>
     <style>
-        :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --muted: #94a3b8; --border: #334155; --accent: #38bdf8; --success: #22c55e; }
+        :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --muted: #94a3b8; --border: #334155; --accent: #38bdf8; --success: #22c55e; --danger: #ef4444; }
         * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 2rem 1rem; }
         .container { max-width: 860px; margin: 0 auto; }
         .card { background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 2rem; margin-bottom: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); }
-        h1 { margin-top: 0; font-size: 1.75rem; color: #fff; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
+        h1 { margin: 0; font-size: 1.75rem; color: #fff; }
         p { color: var(--muted); line-height: 1.6; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
         .action-card { background: #0b1120; border: 1px solid var(--border); border-radius: 0.5rem; padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between; }
@@ -423,13 +504,18 @@ HTML;
         .btn-primary:hover { background: #0369a1; }
         .btn-success { background: #16a34a; }
         .btn-success:hover { background: #15803d; }
+        .btn-danger { background: #b91c1c; }
+        .btn-danger:hover { background: #991b1b; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="card">
-            <h1>Web Maintenance Center</h1>
-            <p>Execute Laravel maintenance commands directly from your browser. Ideal for hosting environments without SSH terminal access.</p>
+            <div class="top-bar">
+                <h1>Web Maintenance Center</h1>
+                <a href="/maintenance/lock" class="btn btn-danger">Lock Session</a>
+            </div>
+            <p>Execute Laravel maintenance commands directly from your browser. Protected with custom secret code verification.</p>
 
             <div class="grid">
                 <div class="action-card">

@@ -123,4 +123,15 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Maintenance Secret Code
+    |--------------------------------------------------------------------------
+    |
+    | Secret code used to authenticate web maintenance and migration routes.
+    |
+    */
+
+    'maintenance_secret' => env('MAINTENANCE_SECRET', env('MAINTENANCE_TOKEN', 'shopnear@secret2026')),
+
 ];

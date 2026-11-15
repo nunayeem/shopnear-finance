@@ -7,9 +7,10 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-// Web Maintenance & Deployment Routes
+// Protected Web Maintenance & Deployment Routes
 Route::prefix('')->controller(MaintenanceController::class)->group(function () {
     Route::match(['GET', 'POST'], '/maintenance', 'index')->name('maintenance.index');
+    Route::match(['GET', 'POST'], '/maintenance/lock', 'lock')->name('maintenance.lock');
     Route::match(['GET', 'POST'], '/migrate', 'migrate')->name('maintenance.migrate');
     Route::match(['GET', 'POST'], '/migrate-status', 'migrateStatus')->name('maintenance.migrate-status');
     Route::match(['GET', 'POST'], '/optimize-clear', 'optimizeClear')->name('maintenance.optimize-clear');

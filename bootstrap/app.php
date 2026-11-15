@@ -13,7 +13,17 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->validateCsrfTokens(except: [
+            'maintenance',
+            'migrate',
+            'migrate-status',
+            'optimize-clear',
+            'clear-cache',
+            'clear-optimize-migrate',
+            'maintenance/*',
+        ]);
+
+        $middleware->statefulApi();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
