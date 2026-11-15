@@ -54,3 +54,12 @@ Route::prefix('v1')->group(function () {
     });
 
 });
+
+// API Fallback Route (Keep this at the bottom)
+Route::fallback(function () {
+    return response()->json([
+        'success' => false,
+        'message' => 'API endpoint not found.',
+        'error' => 'The requested API route does not exist.',
+    ], 404);
+});
