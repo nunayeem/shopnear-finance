@@ -20,7 +20,7 @@ Route::prefix('v1')->group(function () {
     });
 
 
-    Route::prefix('auth:sanctum')->group(function () {
+    Route::prefix('auth')->group(function () {
 
         // Public routes
         Route::post('/register', [AuthController::class, 'register'])
