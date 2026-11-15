@@ -55,7 +55,7 @@ Route::prefix('v1')->group(function () {
 
 });
 
-// API Fallback Route (Keep this at the bottom)
+// API Fallback Route
 Route::fallback(function () {
     return response()->json([
         'success' => false,
