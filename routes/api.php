@@ -10,7 +10,6 @@ Route::prefix('v1')->group(function () {
     // API Health Check
     Route::get('/', [App\Http\Controllers\Api\V1\ApiController::class, 'index']);
 
-    // Public Authentication Routes
     Route::prefix('auth')->group(function () {
 
         Route::post('/register', [AuthController::class, 'register'])
@@ -19,20 +18,13 @@ Route::prefix('v1')->group(function () {
         Route::post('/login', [AuthController::class, 'login'])
             ->middleware('throttle:5,1');
 
-    });
+        Route::middleware('auth:sanctum')->group(function () {
 
-    // Protected Routes
-    Route::middleware('auth:sanctum')->group(function () {
+            Route::get('/me', [AuthController::class, 'me']);
 
-        Route::get('/auth/me', function (Request $request) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Authenticated user retrieved successfully.',
-                'data' => $request->user(),
-            ]);
+            Route::post('/logout', [AuthController::class, 'logout']);
+
         });
-
-        Route::post('/auth/logout', [AuthController::class, 'logout']);
 
     });
 

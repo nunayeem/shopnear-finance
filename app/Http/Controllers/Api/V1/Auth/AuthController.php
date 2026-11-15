@@ -18,71 +18,52 @@ class AuthController extends Controller
      */
     public function register(RegisterRequest $request)
     {
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => $request->password,
-        ]);
+        $user = User::create($request->validated());
+
+        $token = $user->createToken('AmarHisab')->plainTextToken;
 
         return response()->json([
             'success' => true,
             'message' => 'Account created successfully.',
             'data' => [
                 'user' => $user,
+                'token' => $token,
+                'token_type' => 'Bearer',
             ],
         ], 201);
     }
 
     /**
-     * Web login using Sanctum session authentication.
+     * Login using email or phone.
      */
-    public function webLogin(LoginRequest $request)
+    public function login(LoginRequest $request)
     {
-        if (! Auth::guard('web')->attempt(
-            $request->only('email', 'password')
-        )) {
-            throw ValidationException::withMessages([
-                'email' => ['Invalid email or password.'],
-            ]);
-        }
+        $login = $request->validated()['login'];
 
-        $request->session()->regenerate();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Login successful.',
-            'data' => [
-                'user' => $request->user('web'),
-            ],
-        ]);
-    }
-
-    /**
-     * Mobile login using Sanctum bearer tokens.
-     */
-    public function mobileLogin(LoginRequest $request)
-    {
-        $user = User::where('email', $request->email)->first();
+        $user = User::where(function ($query) use ($login) {
+            $query->where('email', $login)
+                  ->orWhere('phone', $login);
+        })->first();
 
         if (! $user || ! Hash::check(
             $request->password,
             $user->password
         )) {
             throw ValidationException::withMessages([
-                'email' => ['Invalid email or password.'],
+                'login' => ['Invalid email/mobile number or password.'],
             ]);
         }
 
         $token = $user->createToken(
-            $request->device_name ?? 'AmarHisab Mobile'
-        );
+            $request->device_name ?? 'AmarHisab'
+        )->plainTextToken;
 
         return response()->json([
             'success' => true,
-            'message' => 'Mobile login successful.',
+            'message' => 'Login successful.',
             'data' => [
                 'user' => $user,
-                'token' => $token->plainTextToken,
+                'token' => $token,
                 'token_type' => 'Bearer',
             ],
         ]);
@@ -95,6 +76,7 @@ class AuthController extends Controller
     {
         return response()->json([
             'success' => true,
+            'message' => 'Authenticated user retrieved successfully.',
             'data' => [
                 'user' => $request->user(),
             ],
@@ -102,27 +84,11 @@ class AuthController extends Controller
     }
 
     /**
-     * Logout mobile token.
+     * Logout current token.
      */
-    public function mobileLogout(Request $request)
+    public function logout(Request $request)
     {
         $request->user()->currentAccessToken()?->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Logged out successfully.',
-        ]);
-    }
-
-    /**
-     * Logout web session.
-     */
-    public function webLogout(Request $request)
-    {
-        Auth::guard('web')->logout();
-
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
 
         return response()->json([
             'success' => true,
