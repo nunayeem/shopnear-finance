@@ -72,16 +72,27 @@ class AuthController extends Controller
     /**
      * Get authenticated user.
      */
+    
     public function me(Request $request)
     {
+        $user = $request->user();
+
+        $user->load([
+            'businesses',
+            'activeBusiness',
+        ]);
+
         return response()->json([
             'success' => true,
-            'message' => 'Authenticated user retrieved successfully.',
+            'message' => 'User profile retrieved successfully.',
             'data' => [
-                'user' => $request->user(),
+                'user' => $user,
+                'businesses' => $user->businesses,
+                'active_business' => $user->activeBusiness,
             ],
         ]);
     }
+
 
     /**
      * Logout current token.
