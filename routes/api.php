@@ -6,6 +6,13 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
 
+    Route::get('/', function () {
+        return response()->json([
+            'success' => true,
+            'message' => 'API v1 is working.',
+        ]);
+    });
+
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {
 
