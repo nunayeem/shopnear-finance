@@ -8,12 +8,15 @@ use Tests\TestCase;
 class ExampleTest extends TestCase
 {
     /**
-     * A basic test example.
+     * Test the API landing page on root web route.
      */
     public function test_the_application_returns_a_successful_response(): void
     {
         $response = $this->get('/');
 
         $response->assertStatus(200);
+        $response->assertSee('API Gateway');
+        $response->assertSee('/api/v1');
+        $response->assertSee('API Online');
     }
 }

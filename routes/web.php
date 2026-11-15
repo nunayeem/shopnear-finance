@@ -1,10 +1,27 @@
 <?php
 
 use App\Http\Controllers\MaintenanceController;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('welcome');
+    $dbConnected = false;
+    $dbName = null;
+    $dbDriver = config('database.default', 'mysql');
+
+    try {
+        DB::connection()->getPdo();
+        $dbConnected = true;
+        $dbName = DB::connection()->getDatabaseName();
+    } catch (Throwable $e) {
+        $dbConnected = false;
+    }
+
+    return view('welcome', [
+        'dbConnected' => $dbConnected,
+        'dbName' => $dbName,
+        'dbDriver' => $dbDriver,
+    ]);
 });
 
 // Protected Web Maintenance & Deployment Routes
