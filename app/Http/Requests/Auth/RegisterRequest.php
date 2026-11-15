@@ -34,16 +34,14 @@ class RegisterRequest extends FormRequest
                 'nullable',
                 'required_without:email',
                 'string',
-                'max:20',
+                'max:11',
+                'starts_with:01',
                 'unique:users,phone',
             ],
 
             'password' => [
                 'required',
-                'confirmed',
-                Password::min(8)
-                    ->letters()
-                    ->numbers(),
+                Password::min(8),
             ],
         ];
     }
